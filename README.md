@@ -34,8 +34,8 @@ If you want to run the project locally or contribute:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/seiri-dashboard.git
-   cd seiri-dashboard
+   git clone https://github.com/devftkrshna/seiri.git
+   cd seiri
    ```
 
 2. Install dependencies:
@@ -52,13 +52,13 @@ If you want to run the project locally or contribute:
    ```bash
    npm run build
    ```
-   *This will generate a `dist` folder containing the compiled extension files.*
+   *This will generate a `seiri-extension` folder containing the compiled extension files.*
 
 5. **Load the Extension into Chrome**:
    - Go to `chrome://extensions/`
    - Enable **Developer mode**
    - Click **Load unpacked**
-   - Select the newly generated `dist` folder.
+   - Select the newly generated `seiri-extention` folder.
 
 ## 🛠 Tech Stack
 

@@ -14,7 +14,7 @@ Seiri is your ultimate personal productivity dashboard and job application track
 
 You can easily install this extension without putting it on the Chrome Web Store by manually loading it.
 
-1. **Download the Extension**: Go to the [Releases page](../../releases) of this GitHub repository and download the latest `seiri-extension.zip` file.
+1. **Download the Extension**: Go to the [Releases page](../../releases) of this GitHub repository and download the latest `seiri-v1.0.zip` file.
 2. **Extract the ZIP**: Unzip the downloaded file to a permanent folder on your computer (e.g., inside your Documents folder). 
 3. **Open Extensions Page**: Open your Chromium-based browser (Chrome, Edge, Brave) and type `chrome://extensions/` (or `edge://extensions/`) in your address bar and press Enter.
 4. **Enable Developer Mode**: In the top right corner of the Extensions page, turn on the **Developer mode** toggle.

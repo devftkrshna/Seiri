@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { User, Github, Code2, RefreshCw, ExternalLink, Trophy, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { User, Github, Code2, RefreshCw, ExternalLink, Trophy, Check, AlertCircle, Loader2, Key } from 'lucide-react';
 import db from '../db';
-import { fetchGitHubProfile, fetchGitHubContributions, fetchLeetCodeProfile, fetchLeetCodeContest } from '../utils/api';
+import { fetchGitHubProfile, fetchGitHubContributions, fetchLeetCodeProfile, fetchLeetCodeContest, fetchAuthenticatedGitHubUser } from '../utils/api';
 
 export default function Profile() {
   const [githubUser, setGithubUser] = useState('');
@@ -15,6 +15,10 @@ export default function Profile() {
   const [errors, setErrors] = useState({ github: null, leetcode: null });
   const [saved, setSaved] = useState({ github: false, leetcode: false });
 
+  // GitHub Auth States
+  const [githubAuthMethod, setGithubAuthMethod] = useState('username'); // 'username', 'token'
+  const [githubToken, setGithubToken] = useState('');
+
   // Load saved settings on mount
   useEffect(() => {
     (async () => {
@@ -24,37 +28,62 @@ export default function Profile() {
       const ghContrib = await db.settings.get('github_contributions');
       const lcData = await db.settings.get('leetcode_data');
       const lcContest = await db.settings.get('leetcode_contest');
+      
+      const ghAuthMethod = await db.settings.get('github_auth_method');
+      const ghToken = await db.settings.get('github_token');
+      
       if (ghUser?.value) setGithubUser(ghUser.value);
       if (lcUser?.value) setLeetcodeUser(lcUser.value);
       if (ghData?.value) setGithubData(ghData.value);
       if (ghContrib?.value) setGithubContribs(ghContrib.value);
       if (lcData?.value) setLeetcodeData(lcData.value);
       if (lcContest?.value) setLeetcodeContest(lcContest.value);
+      
+      if (ghAuthMethod?.value) setGithubAuthMethod(ghAuthMethod.value);
+      if (ghToken?.value) {
+        setGithubToken(ghToken.value);
+      }
     })();
   }, []);
 
+  const runGithubFetch = async (method, username, token) => {
+    let profile;
+    let usernameToUse = username;
+    
+    if (method === 'username') {
+       if (!username.trim()) throw new Error('Username required');
+       profile = await fetchGitHubProfile(username.trim());
+    } else {
+       if (!token || !token.trim()) throw new Error('Token required for this method');
+       profile = await fetchAuthenticatedGitHubUser(token.trim());
+       usernameToUse = profile.login;
+       setGithubUser(usernameToUse);
+    }
+    
+    const contribs = await fetchGitHubContributions(usernameToUse, token);
+    
+    setGithubData(profile);
+    setGithubContribs(contribs);
+    await db.settings.put({ key: 'github_auth_method', value: method });
+    await db.settings.put({ key: 'github_username', value: usernameToUse });
+    if (token) await db.settings.put({ key: 'github_token', value: token });
+    await db.settings.put({ key: 'github_data', value: profile });
+    await db.settings.put({ key: 'github_contributions', value: contribs });
+    await db.settings.put({ key: 'github_last_fetched', value: new Date().toISOString() });
+    setSaved(s => ({ ...s, github: true }));
+    setTimeout(() => setSaved(s => ({ ...s, github: false })), 2000);
+  };
+
   const handleGithubConnect = useCallback(async () => {
-    if (!githubUser.trim()) return;
     setLoading(l => ({ ...l, github: true }));
     setErrors(e => ({ ...e, github: null }));
     try {
-      const [profile, contribs] = await Promise.all([
-        fetchGitHubProfile(githubUser.trim()),
-        fetchGitHubContributions(githubUser.trim()),
-      ]);
-      setGithubData(profile);
-      setGithubContribs(contribs);
-      await db.settings.put({ key: 'github_username', value: githubUser.trim() });
-      await db.settings.put({ key: 'github_data', value: profile });
-      await db.settings.put({ key: 'github_contributions', value: contribs });
-      await db.settings.put({ key: 'github_last_fetched', value: new Date().toISOString() });
-      setSaved(s => ({ ...s, github: true }));
-      setTimeout(() => setSaved(s => ({ ...s, github: false })), 2000);
+      await runGithubFetch(githubAuthMethod, githubUser, githubToken);
     } catch (err) {
       setErrors(e => ({ ...e, github: err.message }));
     }
     setLoading(l => ({ ...l, github: false }));
-  }, [githubUser]);
+  }, [githubUser, githubToken, githubAuthMethod]);
 
   const handleLeetcodeConnect = useCallback(async () => {
     if (!leetcodeUser.trim()) return;
@@ -162,14 +191,45 @@ export default function Profile() {
               )}
             </div>
 
-            <div className="flex items-center gap-sm mb-lg">
-              <input className="input" placeholder="GitHub username (e.g. torvalds)" value={githubUser}
-                onChange={e => setGithubUser(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleGithubConnect()} />
-              <button className="btn btn-primary" onClick={handleGithubConnect} disabled={loading.github} style={{ minWidth: 100 }}>
-                {loading.github ? <Loader2 size={16} className="spin" /> : saved.github ? <><Check size={16} /> Saved</> : <><RefreshCw size={16} /> Sync</>}
+            <div className="auth-method-tabs flex items-center gap-xs mb-md" style={{ background: 'var(--surface-2)', padding: '4px', borderRadius: '8px' }}>
+              <button 
+                className={`btn btn-sm ${githubAuthMethod === 'username' ? 'btn-primary' : 'btn-ghost'}`} 
+                style={{ flex: 1, border: 'none' }}
+                onClick={() => setGithubAuthMethod('username')}>
+                <User size={14} /> Username
+              </button>
+              <button 
+                className={`btn btn-sm ${githubAuthMethod === 'token' ? 'btn-primary' : 'btn-ghost'}`} 
+                style={{ flex: 1, border: 'none' }}
+                onClick={() => setGithubAuthMethod('token')}>
+                <Key size={14} /> Token
               </button>
             </div>
+
+            {githubAuthMethod === 'username' && (
+              <div className="flex items-center gap-sm mb-lg">
+                <input className="input" placeholder="GitHub username (e.g. torvalds)" value={githubUser}
+                  onChange={e => setGithubUser(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleGithubConnect()} />
+                <button className="btn btn-primary" onClick={handleGithubConnect} disabled={loading.github} style={{ minWidth: 100 }}>
+                  {loading.github ? <Loader2 size={16} className="spin" /> : saved.github ? <><Check size={16} /> Saved</> : <><RefreshCw size={16} /> Sync</>}
+                </button>
+              </div>
+            )}
+
+            {githubAuthMethod === 'token' && (
+              <div className="flex flex-col gap-sm mb-lg">
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Use a Personal Access Token (PAT) for authenticated access.</p>
+                <div className="flex items-center gap-sm">
+                  <input className="input" type="password" placeholder="ghp_xxxxxxxxxxxx" value={githubToken}
+                    onChange={e => setGithubToken(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleGithubConnect()} />
+                  <button className="btn btn-primary" onClick={handleGithubConnect} disabled={loading.github} style={{ minWidth: 100 }}>
+                    {loading.github ? <Loader2 size={16} className="spin" /> : saved.github ? <><Check size={16} /> Saved</> : <><RefreshCw size={16} /> Sync</>}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {errors.github && (
               <div className="profile-error"><AlertCircle size={14} /> {errors.github}</div>

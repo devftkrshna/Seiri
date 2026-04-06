@@ -21,7 +21,80 @@ export async function fetchGitHubProfile(username) {
   };
 }
 
-export async function fetchGitHubContributions(username) {
+export async function fetchAuthenticatedGitHubUser(token) {
+  const res = await fetch(`${GITHUB_API}/user`, {
+    headers: {
+      'Authorization': `token ${token}`
+    }
+  });
+  if (!res.ok) throw new Error('Invalid token or failed to fetch user');
+  const data = await res.json();
+  return {
+    login: data.login,
+    name: data.name,
+    avatar: data.avatar_url,
+    bio: data.bio,
+    publicRepos: data.public_repos,
+    followers: data.followers,
+    following: data.following,
+    profileUrl: data.html_url,
+    createdAt: data.created_at,
+  };
+}
+
+
+
+export async function fetchGitHubContributions(username, token = null) {
+  if (token) {
+    const query = `
+      query($userName:String!) {
+        user(login: $userName){
+          contributionsCollection {
+            contributionCalendar {
+              totalContributions
+              weeks {
+                contributionDays {
+                  contributionCount
+                  date
+                  contributionLevel
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const res = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, variables: { userName: username } })
+    });
+    
+    if (res.ok) {
+      const result = await res.json();
+      if (!result.errors && result.data?.user) {
+        const calendar = result.data.user.contributionsCollection.contributionCalendar;
+        const contributions = [];
+        calendar.weeks.forEach(week => {
+          week.contributionDays.forEach(day => {
+            contributions.push({
+              date: day.date,
+              count: day.contributionCount
+            });
+          });
+        });
+        return {
+          total: calendar.totalContributions,
+          contributions
+        };
+      }
+    }
+    // If GraphQL fails, fallback to public API
+  }
+
   const res = await fetch(`${GITHUB_CONTRIB_API}/${username}?y=last`);
   if (!res.ok) throw new Error('Failed to fetch GitHub contributions');
   const data = await res.json();
@@ -34,7 +107,6 @@ export async function fetchGitHubContributions(username) {
     })),
   };
 }
-
 export async function fetchLeetCodeProfile(username) {
   const res = await fetch(`${LEETCODE_API}/userProfile/${username}`);
   if (!res.ok) throw new Error(`LeetCode user "${username}" not found`);
